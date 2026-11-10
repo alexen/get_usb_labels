@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <map>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -102,7 +103,6 @@ std::string resolve_linux_symlink(const std::string& path_str) {
 
 // Получение метки для конкретного устройства (например, sdc1)
 std::string find_label_for_device(const std::string& target_dev) {
-     const fs::path label_path = "/dev/disk/by-uuid"; // Базовый путь для валидации, ищем в by-label
      const fs::path target_label_dir = "/dev/disk/by-label";
      boost::system::error_code ec;
 
@@ -157,24 +157,36 @@ std::string get_disk_info_by_uuid(const std::string& uuid) {
 }
 
 int main(int argc, char* argv[]) {
-     // Проверяем, передал ли пользователь аргумент
+     // Проверяем, передан ли хотя бы один аргумент
      if (argc < 2) {
-          std::cout << "Использование: " << argv << " [UUID_диска]\n";
-          std::cout << "Пример: " << argv << " 7BF7-B6CC\n";
+          std::cout << "Использование: " << argv[0] << " [UUID_1] [UUID_2] [UUID_3] ...\n";
+          std::cout << "Пример: " << argv[0] << " 7BF7-B6CC 1A2B-3C4D\n";
           return 1;
      }
 
-     // Получаем UUID из параметров командной строки
-     std::string input_uuid = argv[1];
+     // Будем отслеживать, произошла ли ошибка хотя бы для одного UUID
+     bool total_success = true;
 
-     // Приводим UUID к верхнему регистру (для совместимости с именованием в /dev/disk/by-uuid/)
-     std::transform(input_uuid.begin(), input_uuid.end(), input_uuid.begin(), [](unsigned char c) {
-          return std::toupper(c);
-     });
+     // Последовательно перебираем все переданные аргументы
+     for (int i = 1; i < argc; ++i) {
+          std::string input_uuid = argv[i];
 
-     // Получаем и выводим результат
-     std::string result = get_disk_info_by_uuid(input_uuid);
-     std::cout << result << "\n";
+          // Приводим UUID к верхнему регистру
+          std::transform(input_uuid.begin(), input_uuid.end(), input_uuid.begin(), [](unsigned char c) {
+               return std::toupper(c);
+          });
 
-     return 0;
+          std::string result = get_disk_info_by_uuid(input_uuid);
+
+          // Выводим UUID и результат его обработки
+          std::cout << input_uuid << " -> " << result << "\n";
+
+          // Если внутри строки результата есть слово "Ошибка", фиксируем сбой
+          if (result.rfind("Ошибка", 0) == 0) {
+               total_success = false;
+          }
+     }
+
+     // Возвращаем 0, если все диски нашлись успешно, или 1, если была хоть одна ошибка
+     return total_success ? 0 : 1;
 }
