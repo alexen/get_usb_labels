@@ -1,0 +1,180 @@
+#include <iostream>
+#include <string>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <algorithm>
+#include <cctype>
+#include <climits>
+#include <cstdlib>
+
+#include <boost/filesystem.hpp>
+#include <boost/system/error_code.hpp>
+
+namespace fs = boost::filesystem;
+
+// Функция декодирования hex-escapes (\x20)
+std::string decode_hex_escapes(const std::string& input) {
+     std::string result;
+     result.reserve(input.length());
+     for (size_t i = 0; i < input.length(); ++i) {
+          if (input[i] == '\\' && i + 3 < input.length() && input[i + 1] == 'x') {
+               std::string hex_str = input.substr(i + 2, 2);
+               try {
+                    char ch = static_cast<char>(std::stoul(hex_str, nullptr, 16));
+                    result += ch;
+                    i += 3;
+                    continue;
+               } catch (...) {}
+          }
+          result += input[i];
+     }
+     return result;
+}
+
+std::string trim(const std::string& str) {
+     size_t first = str.find_first_not_of(" \t\r\n");
+     if (std::string::npos == first) return "";
+     size_t last = str.find_last_not_of(" \t\r\n");
+     return str.substr(first, (last - first + 1));
+}
+
+std::string get_readable_size(const std::string& dev_name) {
+     std::string parent_name = dev_name;
+     while (!parent_name.empty() && std::isdigit(parent_name.back())) {
+          parent_name.pop_back();
+     }
+
+     std::ifstream size_file("/sys/class/block/" + parent_name + "/size");
+     long long sectors = 0;
+     if (!(size_file >> sectors)) return "?? GB";
+
+     double bytes = sectors * 512.0;
+     const char* suffixes[] = {"B", "KB", "MB", "GB", "TB"};
+     int s = 0;
+     while (bytes >= 1024 && s < 4) {
+          s++;
+          bytes /= 1024;
+     }
+
+     std::ostringstream oss;
+     oss << std::fixed << std::setprecision(1) << bytes << " " << suffixes[s];
+     return oss.str();
+}
+
+std::string get_device_model(const std::string& dev_name) {
+     std::string parent_name = dev_name;
+     while (!parent_name.empty() && std::isdigit(parent_name.back())) {
+          parent_name.pop_back();
+     }
+
+     std::string base_path = "/sys/class/block/" + parent_name + "/device/";
+     std::string vendor, model;
+
+     std::ifstream vendor_file(base_path + "vendor");
+     std::getline(vendor_file, vendor);
+
+     std::ifstream model_file(base_path + "model");
+     std::getline(model_file, model);
+
+     vendor = trim(vendor);
+     model = trim(model);
+
+     std::string info;
+     if (!vendor.empty()) info += vendor + " ";
+     if (!model.empty()) info += model;
+
+     return info.empty() ? "Неизвестное устройство" : info;
+}
+
+// Разрешение симлинков через POSIX realpath
+std::string resolve_linux_symlink(const std::string& path_str) {
+     char resolved[PATH_MAX];
+     if (realpath(path_str.c_str(), resolved) != nullptr) {
+          std::string res(resolved);
+          size_t last_slash = res.find_last_of('/');
+          if (last_slash != std::string::npos) {
+               return res.substr(last_slash + 1);
+          }
+     }
+     return "";
+}
+
+// Получение метки для конкретного устройства (например, sdc1)
+std::string find_label_for_device(const std::string& target_dev) {
+     const fs::path label_path = "/dev/disk/by-uuid"; // Базовый путь для валидации, ищем в by-label
+     const fs::path target_label_dir = "/dev/disk/by-label";
+     boost::system::error_code ec;
+
+     if (fs::exists(target_label_dir, ec) && !ec) {
+          fs::directory_iterator entry(target_label_dir, ec);
+          fs::directory_iterator end;
+
+          while (!ec && entry != end) {
+               fs::file_status sym_stat = entry->symlink_status(ec);
+               if (!ec && sym_stat.type() == fs::symlink_file) {
+                    std::string dev_name = resolve_linux_symlink(entry->path().string());
+                    if (dev_name == target_dev) {
+                         return decode_hex_escapes(entry->path().filename().string());
+                    }
+               }
+               entry.increment(ec);
+          }
+     }
+     return "";
+}
+
+// Получение информации о диске по его UUID
+std::string get_disk_info_by_uuid(const std::string& uuid) {
+     const std::string uuid_dir = "/dev/disk/by-uuid/";
+     std::string full_uuid_path = uuid_dir + uuid;
+     boost::system::error_code ec;
+
+     // Проверяем, существует ли такой UUID в системе
+     if (!fs::exists(full_uuid_path, ec) || ec) {
+          return "Ошибка: UUID " + uuid + " не найден в системе.";
+     }
+
+     // Определяем имя устройства по симлинку (например, "sdc1")
+     std::string dev_name = resolve_linux_symlink(full_uuid_path);
+     if (dev_name.empty()) {
+          return "Ошибка: Не удалось разрешить устройство для UUID " + uuid;
+     }
+
+     // Собираем железные данные
+     std::string model = get_device_model(dev_name);
+     std::string size = get_readable_size(dev_name);
+     std::string label = find_label_for_device(dev_name);
+
+     // Форматируем строку вывода
+     std::ostringstream oss;
+     oss << model << ", " << size;
+     if (!label.empty()) {
+          oss << " (" << label << ")";
+     }
+
+     return oss.str();
+}
+
+int main(int argc, char* argv[]) {
+     // Проверяем, передал ли пользователь аргумент
+     if (argc < 2) {
+          std::cout << "Использование: " << argv << " [UUID_диска]\n";
+          std::cout << "Пример: " << argv << " 7BF7-B6CC\n";
+          return 1;
+     }
+
+     // Получаем UUID из параметров командной строки
+     std::string input_uuid = argv[1];
+
+     // Приводим UUID к верхнему регистру (для совместимости с именованием в /dev/disk/by-uuid/)
+     std::transform(input_uuid.begin(), input_uuid.end(), input_uuid.begin(), [](unsigned char c) {
+          return std::toupper(c);
+     });
+
+     // Получаем и выводим результат
+     std::string result = get_disk_info_by_uuid(input_uuid);
+     std::cout << result << "\n";
+
+     return 0;
+}
