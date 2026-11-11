@@ -1,6 +1,5 @@
 #include <iostream>
 #include <string>
-#include <map>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -11,8 +10,7 @@
 
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp>
-
-namespace fs = boost::filesystem;
+#include <boost/algorithm/string/trim.hpp>
 
 // Функция декодирования hex-escapes (\x20)
 std::string decode_hex_escapes(const std::string& input) {
@@ -103,16 +101,16 @@ std::string resolve_linux_symlink(const std::string& path_str) {
 
 // Получение метки для конкретного устройства (например, sdc1)
 std::string find_label_for_device(const std::string& target_dev) {
-     const fs::path target_label_dir = "/dev/disk/by-label";
+     const boost::filesystem::path target_label_dir = "/dev/disk/by-label";
      boost::system::error_code ec;
 
-     if (fs::exists(target_label_dir, ec) && !ec) {
-          fs::directory_iterator entry(target_label_dir, ec);
-          fs::directory_iterator end;
+     if (boost::filesystem::exists(target_label_dir, ec) && !ec) {
+          boost::filesystem::directory_iterator entry(target_label_dir, ec);
+          boost::filesystem::directory_iterator end;
 
           while (!ec && entry != end) {
-               fs::file_status sym_stat = entry->symlink_status(ec);
-               if (!ec && sym_stat.type() == fs::symlink_file) {
+               boost::filesystem::file_status sym_stat = entry->symlink_status(ec);
+               if (!ec && sym_stat.type() == boost::filesystem::symlink_file) {
                     std::string dev_name = resolve_linux_symlink(entry->path().string());
                     if (dev_name == target_dev) {
                          return decode_hex_escapes(entry->path().filename().string());
@@ -131,7 +129,7 @@ std::string get_disk_info_by_uuid(const std::string& uuid) {
      boost::system::error_code ec;
 
      // Проверяем, существует ли такой UUID в системе
-     if (!fs::exists(full_uuid_path, ec) || ec) {
+     if (!boost::filesystem::exists(full_uuid_path, ec) || ec) {
           return "Ошибка: UUID " + uuid + " не найден в системе.";
      }
 
