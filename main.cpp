@@ -112,17 +112,16 @@ std::string getDeviceModel( const std::string& devName )
      const auto vendor = readParamFromFile( basePath, "vendor" );
      const auto model = readParamFromFile( basePath, "model" );
 
-     std::string info;
+     std::string summary = "Unknown device";
      if( !vendor.empty() )
      {
-          info += vendor;
+          summary = vendor;
      }
      if( !model.empty() )
      {
-          info += ' ' + model;
+          summary += ' ' + model;
      }
-
-     return info.empty() ? "Неизвестное устройство" : info;
+     return summary;
 }
 
 
