@@ -1,9 +1,7 @@
 #include <iostream>
 #include <string>
 #include <fstream>
-#include <iomanip>
 #include <sstream>
-#include <algorithm>
 #include <cctype>
 #include <climits>
 #include <cstdlib>
@@ -12,181 +10,224 @@
 #include <boost/system/error_code.hpp>
 #include <boost/algorithm/string/trim.hpp>
 
+
 // Функция декодирования hex-escapes (\x20)
-std::string decode_hex_escapes(const std::string& input) {
-     auto hex_val = [](char c) -> int {
-          if (c >= '0' && c <= '9') return c - '0';
-          if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-          if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+std::string decodeHexEscapes( const std::string& input )
+{
+     static auto hexVal = []( const char c ) -> int
+     {
+          if( c >= '0' && c <= '9' )
+          {
+               return c - '0';
+          }
+          if( c >= 'a' && c <= 'f' )
+          {
+               return c - 'a' + 10;
+          }
+          if( c >= 'A' && c <= 'F' )
+          {
+               return c - 'A' + 10;
+          }
           return -1;
      };
 
      std::string result;
-     result.reserve(input.length());
+     result.reserve( input.length() );
 
-     for (size_t i = 0; i < input.length(); ++i) {
-          if (input[i] == '\\' && i + 3 < input.length() &&
-              (input[i+1] == 'x' || input[i+1] == 'X')) {
-               int hi = hex_val(input[i+2]);
-               int lo = hex_val(input[i+3]);
-               if (hi >= 0 && lo >= 0) {
-                    result += static_cast<char>((hi << 4) | lo);
+     for( auto i = 0u; i < input.length(); ++i )
+     {
+          if( input[ i ] == '\\'
+               && (i + 3) < input.length()
+               && input[ i + 1 ] == 'x' )
+          {
+               const auto hi = hexVal( input[ i + 2 ] );
+               const auto lo = hexVal( input[ i + 3 ] );
+               if( hi >= 0 && lo >= 0 )
+               {
+                    result += static_cast< char >( (hi << 4) | lo );
                     i += 3;
                     continue;
                }
           }
-          result += input[i];
+          result += input[ i ];
      }
+
      return result;
 }
 
-std::string get_readable_size(const std::string& dev_name) {
-     std::string parent_name = dev_name;
-     while (!parent_name.empty() && std::isdigit(parent_name.back())) {
-          parent_name.pop_back();
+
+std::string getReadableSize( const std::string& devName, const std::size_t kilo = 1000 )
+{
+     std::string parentName = devName;
+     while( !parentName.empty() && std::isdigit( parentName.back() ) )
+     {
+          parentName.pop_back();
      }
 
-     std::ifstream size_file("/sys/class/block/" + parent_name + "/size");
+     std::ifstream sizeFile( "/sys/class/block/" + parentName + "/size" );
      long long sectors = 0;
-     if (!(size_file >> sectors)) return "?? GB";
-
-     double bytes = sectors * 512.0;
-     const char* suffixes[] = {"B", "KB", "MB", "GB", "TB"};
-     int s = 0;
-     while (bytes >= 1024 && s < 4) {
-          s++;
-          bytes /= 1024;
+     if( !(sizeFile >> sectors) )
+     {
+          return "?? GB";
      }
 
-     std::ostringstream oss;
-     oss << std::fixed << std::setprecision(1) << bytes << " " << suffixes[s];
-     return oss.str();
+     static constexpr auto sectorSize = 512.0;
+     static const std::string suffixes[] = { "B", "KB", "MB", "GB", "TB" };
+
+     auto bytes = sectors * sectorSize;
+     auto suffixIdx = 0u;
+
+     while( bytes >= kilo && suffixIdx < 4 )
+     {
+          ++suffixIdx;
+          bytes /= kilo;
+     }
+
+     return std::to_string( static_cast< std::size_t >( bytes ) )
+          + ' '
+          + suffixes[ suffixIdx ];
 }
 
-std::string get_device_model(const std::string& dev_name) {
-     std::string parent_name = dev_name;
-     while (!parent_name.empty() && std::isdigit(parent_name.back())) {
-          parent_name.pop_back();
+
+std::string getDeviceModel( const std::string& devName )
+{
+     std::string parentName = devName;
+     while( !parentName.empty() && std::isdigit( parentName.back() ) )
+     {
+          parentName.pop_back();
      }
 
-     std::string base_path = "/sys/class/block/" + parent_name + "/device/";
-     std::string vendor, model;
+     const auto basePath = "/sys/class/block/" + parentName + "/device/";
 
-     std::ifstream vendor_file(base_path + "vendor");
-     std::getline(vendor_file, vendor);
+     std::string vendor;
+     std::ifstream vendorFile( basePath + "vendor" );
+     std::getline( vendorFile, vendor );
+     boost::algorithm::trim( vendor );
 
-     std::ifstream model_file(base_path + "model");
-     std::getline(model_file, model);
-
-     boost::algorithm::trim(vendor);
-     boost::algorithm::trim(model);
+     std::string model;
+     std::ifstream modelFile( basePath + "model" );
+     std::getline( modelFile, model );
+     boost::algorithm::trim( model );
 
      std::string info;
-     if (!vendor.empty()) info += vendor + " ";
-     if (!model.empty()) info += model;
+     if( !vendor.empty() )
+     {
+          info += vendor;
+     }
+     if( !model.empty() )
+     {
+          info += ' ' + model;
+     }
 
      return info.empty() ? "Неизвестное устройство" : info;
 }
 
+
 // Разрешение симлинков через POSIX realpath
-std::string resolve_linux_symlink(const std::string& path_str) {
-     char resolved[PATH_MAX];
-     if (realpath(path_str.c_str(), resolved) != nullptr) {
-          std::string res(resolved);
-          size_t last_slash = res.find_last_of('/');
-          if (last_slash != std::string::npos) {
-               return res.substr(last_slash + 1);
+std::string resolveLinuxSymlink( const boost::filesystem::path& pathStr )
+{
+     char resolved[ PATH_MAX ] {};
+     if( realpath( pathStr.c_str(), resolved ) != nullptr )
+     {
+          const std::string res( resolved );
+          const auto lastSlash = res.find_last_of( '/' );
+          if( lastSlash != std::string::npos )
+          {
+               return res.substr( lastSlash + 1 );
           }
      }
-     return "";
+     return {};
 }
+
 
 // Получение метки для конкретного устройства (например, sdc1)
-std::string find_label_for_device(const std::string& target_dev) {
-     const boost::filesystem::path target_label_dir = "/dev/disk/by-label";
+std::string findLabelForDevice( const std::string& targetDev )
+{
+     const boost::filesystem::path targetLabelDir = "/dev/disk/by-label";
      boost::system::error_code ec;
 
-     if (boost::filesystem::exists(target_label_dir, ec) && !ec) {
-          boost::filesystem::directory_iterator entry(target_label_dir, ec);
+     if( boost::filesystem::exists( targetLabelDir, ec ) && !ec )
+     {
+          boost::filesystem::directory_iterator entry( targetLabelDir, ec );
           boost::filesystem::directory_iterator end;
 
-          while (!ec && entry != end) {
-               boost::filesystem::file_status sym_stat = entry->symlink_status(ec);
-               if (!ec && sym_stat.type() == boost::filesystem::symlink_file) {
-                    std::string dev_name = resolve_linux_symlink(entry->path().string());
-                    if (dev_name == target_dev) {
-                         return decode_hex_escapes(entry->path().filename().string());
+          while( !ec && entry != end )
+          {
+               const auto symStat = entry->symlink_status( ec );
+               if( !ec && symStat.type() == boost::filesystem::symlink_file )
+               {
+                    std::string devName = resolveLinuxSymlink( entry->path() );
+                    if( devName == targetDev )
+                    {
+                         return decodeHexEscapes( entry->path().filename().string() );
                     }
                }
-               entry.increment(ec);
+               entry.increment( ec );
           }
      }
-     return "";
+     return {};
 }
 
+
 // Получение информации о диске по его UUID
-std::string get_disk_info_by_uuid(const std::string& uuid) {
-     const std::string uuid_dir = "/dev/disk/by-uuid/";
-     std::string full_uuid_path = uuid_dir + uuid;
-     boost::system::error_code ec;
+std::string getDiskInfoByUuid( const std::string& uuid )
+{
+     static const std::string diskUuidDir = "/dev/disk/by-uuid/";
+
+     const auto fullUuidPath = diskUuidDir + uuid;
 
      // Проверяем, существует ли такой UUID в системе
-     if (!boost::filesystem::exists(full_uuid_path, ec) || ec) {
-          return "Ошибка: UUID " + uuid + " не найден в системе.";
+     boost::system::error_code ec;
+     if( !boost::filesystem::exists( fullUuidPath, ec ) || ec )
+     {
+          return uuid;
      }
 
      // Определяем имя устройства по симлинку (например, "sdc1")
-     std::string dev_name = resolve_linux_symlink(full_uuid_path);
-     if (dev_name.empty()) {
-          return "Ошибка: Не удалось разрешить устройство для UUID " + uuid;
+     const auto devName = resolveLinuxSymlink( fullUuidPath );
+     if( devName.empty() )
+     {
+          return uuid;
      }
 
      // Собираем железные данные
-     std::string model = get_device_model(dev_name);
-     std::string size = get_readable_size(dev_name);
-     std::string label = find_label_for_device(dev_name);
+     const auto model = getDeviceModel( devName );
+     const auto size = getReadableSize( devName );
+     const auto label = findLabelForDevice( devName );
 
      // Форматируем строку вывода
      std::ostringstream oss;
      oss << model << ", " << size;
-     if (!label.empty()) {
+     if( !label.empty() )
+     {
           oss << " (" << label << ")";
      }
 
      return oss.str();
 }
 
-int main(int argc, char* argv[]) {
+
+int main( int argc, char* argv[] )
+{
      // Проверяем, передан ли хотя бы один аргумент
-     if (argc < 2) {
-          std::cout << "Использование: " << argv[0] << " [UUID_1] [UUID_2] [UUID_3] ...\n";
-          std::cout << "Пример: " << argv[0] << " 7BF7-B6CC 1A2B-3C4D\n";
+     if( argc < 2 )
+     {
+          std::cout << "Использование: " << argv[ 0 ] << " [UUID_1] [UUID_2] [UUID_3] ...\n";
+          std::cout << "Пример: " << argv[ 0 ] << " 7BF7-B6CC 1A2B-3C4D\n";
           return 1;
      }
 
-     // Будем отслеживать, произошла ли ошибка хотя бы для одного UUID
-     bool total_success = true;
-
      // Последовательно перебираем все переданные аргументы
-     for (int i = 1; i < argc; ++i) {
-          std::string input_uuid = argv[i];
-
-          // Приводим UUID к верхнему регистру
-          std::transform(input_uuid.begin(), input_uuid.end(), input_uuid.begin(), [](unsigned char c) {
-               return std::toupper(c);
-          });
-
-          std::string result = get_disk_info_by_uuid(input_uuid);
+     for( auto i = 1; i < argc; ++i )
+     {
+          const std::string inputUuid = argv[ i ];
+          const auto result = getDiskInfoByUuid( inputUuid );
 
           // Выводим UUID и результат его обработки
-          std::cout << input_uuid << " -> " << result << "\n";
-
-          // Если внутри строки результата есть слово "Ошибка", фиксируем сбой
-          if (result.rfind("Ошибка", 0) == 0) {
-               total_success = false;
-          }
+          std::cout << inputUuid << " -> " << result << "\n";
      }
 
-     // Возвращаем 0, если все диски нашлись успешно, или 1, если была хоть одна ошибка
-     return total_success ? 0 : 1;
+     // Возвращаем 0, если все диски нашлись успешно, или 1, если была хоть одна
+     // ошибка
+     return 0;
 }
