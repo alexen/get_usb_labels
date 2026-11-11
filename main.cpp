@@ -124,23 +124,6 @@ std::string getDeviceModel( const std::string& devName )
 }
 
 
-// Разрешение симлинков через POSIX realpath
-std::string resolveLinuxSymlink( const boost::filesystem::path& pathStr )
-{
-     char resolved[ PATH_MAX ] {};
-     if( realpath( pathStr.c_str(), resolved ) != nullptr )
-     {
-          const std::string res( resolved );
-          const auto lastSlash = res.find_last_of( '/' );
-          if( lastSlash != std::string::npos )
-          {
-               return res.substr( lastSlash + 1 );
-          }
-     }
-     return {};
-}
-
-
 // Получение метки для конкретного устройства (например, sdc1)
 std::string findLabelForDevice( const std::string& targetDev )
 {
@@ -157,7 +140,7 @@ std::string findLabelForDevice( const std::string& targetDev )
                const auto symStat = entry->symlink_status( ec );
                if( !ec && symStat.type() == boost::filesystem::symlink_file )
                {
-                    std::string devName = resolveLinuxSymlink( entry->path() );
+                    const auto devName = boost::filesystem::canonical( entry->path() ).filename();
                     if( devName == targetDev )
                     {
                          return decodeHexEscapes( entry->path().filename().string() );
@@ -185,7 +168,7 @@ std::string getDiskInfoByUuid( const std::string& uuid )
      }
 
      // Определяем имя устройства по симлинку (например, "sdc1")
-     const auto devName = resolveLinuxSymlink( fullUuidPath );
+     const auto devName = boost::filesystem::canonical( fullUuidPath ).filename().string();
      if( devName.empty() )
      {
           return uuid;
