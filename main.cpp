@@ -98,17 +98,19 @@ std::string getDeviceModel( const std::string& devName )
      }
 
      static const boost::filesystem::path sysClassBlockDir = "/sys/class/block/";
+     static const auto readParamFromFile = []( const boost::filesystem::path& baseDir, const std::string& param )
+     {
+          std::string value;
+          boost::filesystem::ifstream ifile( baseDir / param );
+          std::getline( ifile, value );
+          boost::algorithm::trim( value );
+          return value;
+     };
+
      const auto basePath = sysClassBlockDir / parentName / "device";
 
-     std::string vendor;
-     boost::filesystem::ifstream vendorFile( basePath / "vendor" );
-     std::getline( vendorFile, vendor );
-     boost::algorithm::trim( vendor );
-
-     std::string model;
-     boost::filesystem::ifstream modelFile( basePath / "model" );
-     std::getline( modelFile, model );
-     boost::algorithm::trim( model );
+     const auto vendor = readParamFromFile( basePath, "vendor" );
+     const auto model = readParamFromFile( basePath, "model" );
 
      std::string info;
      if( !vendor.empty() )
