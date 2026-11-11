@@ -1,6 +1,5 @@
 #include <iostream>
 #include <string>
-#include <fstream>
 #include <sstream>
 #include <cctype>
 #include <climits>
@@ -9,7 +8,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/algorithm/string/trim.hpp>
-
+#include <boost/filesystem/fstream.hpp>
 
 // Функция декодирования hex-escapes (\x20)
 std::string decodeHexEscapes( const std::string& input )
@@ -64,7 +63,8 @@ std::string getReadableSize( const std::string& devName, const std::size_t kilo 
           parentName.pop_back();
      }
 
-     std::ifstream sizeFile( "/sys/class/block/" + parentName + "/size" );
+     static const boost::filesystem::path sysClassBlockDir = "/sys/class/block/";
+     boost::filesystem::ifstream sizeFile( sysClassBlockDir / parentName / "size" );
      long long sectors = 0;
      if( !(sizeFile >> sectors) )
      {
@@ -97,15 +97,16 @@ std::string getDeviceModel( const std::string& devName )
           parentName.pop_back();
      }
 
-     const auto basePath = "/sys/class/block/" + parentName + "/device/";
+     static const boost::filesystem::path sysClassBlockDir = "/sys/class/block/";
+     const auto basePath = sysClassBlockDir / parentName / "device";
 
      std::string vendor;
-     std::ifstream vendorFile( basePath + "vendor" );
+     boost::filesystem::ifstream vendorFile( basePath / "vendor" );
      std::getline( vendorFile, vendor );
      boost::algorithm::trim( vendor );
 
      std::string model;
-     std::ifstream modelFile( basePath + "model" );
+     boost::filesystem::ifstream modelFile( basePath / "model" );
      std::getline( modelFile, model );
      boost::algorithm::trim( model );
 
@@ -172,9 +173,9 @@ std::string findLabelForDevice( const std::string& targetDev )
 // Получение информации о диске по его UUID
 std::string getDiskInfoByUuid( const std::string& uuid )
 {
-     static const std::string diskUuidDir = "/dev/disk/by-uuid/";
+     static const boost::filesystem::path diskUuidDir = "/dev/disk/by-uuid";
 
-     const auto fullUuidPath = diskUuidDir + uuid;
+     const auto fullUuidPath = diskUuidDir / uuid;
 
      // Проверяем, существует ли такой UUID в системе
      boost::system::error_code ec;
