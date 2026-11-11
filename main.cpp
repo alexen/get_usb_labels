@@ -169,8 +169,8 @@ std::string getDiskInfoByUuid( const std::string& uuid )
      }
 
      // Определяем имя устройства по симлинку (например, "sdc1")
-     const auto devName = boost::filesystem::canonical( fullUuidPath ).filename().string();
-     if( devName.empty() )
+     const auto devName = boost::filesystem::canonical( fullUuidPath, ec ).filename().string();
+     if( ec || devName.empty() )
      {
           return uuid;
      }
