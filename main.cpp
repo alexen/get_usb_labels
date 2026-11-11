@@ -14,17 +14,26 @@
 
 // Функция декодирования hex-escapes (\x20)
 std::string decode_hex_escapes(const std::string& input) {
+     auto hex_val = [](char c) -> int {
+          if (c >= '0' && c <= '9') return c - '0';
+          if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+          if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+          return -1;
+     };
+
      std::string result;
      result.reserve(input.length());
+
      for (size_t i = 0; i < input.length(); ++i) {
-          if (input[i] == '\\' && i + 3 < input.length() && input[i + 1] == 'x') {
-               std::string hex_str = input.substr(i + 2, 2);
-               try {
-                    char ch = static_cast<char>(std::stoul(hex_str, nullptr, 16));
-                    result += ch;
+          if (input[i] == '\\' && i + 3 < input.length() &&
+              (input[i+1] == 'x' || input[i+1] == 'X')) {
+               int hi = hex_val(input[i+2]);
+               int lo = hex_val(input[i+3]);
+               if (hi >= 0 && lo >= 0) {
+                    result += static_cast<char>((hi << 4) | lo);
                     i += 3;
                     continue;
-               } catch (...) {}
+               }
           }
           result += input[i];
      }
