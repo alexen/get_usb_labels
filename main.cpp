@@ -31,13 +31,6 @@ std::string decode_hex_escapes(const std::string& input) {
      return result;
 }
 
-std::string trim(const std::string& str) {
-     size_t first = str.find_first_not_of(" \t\r\n");
-     if (std::string::npos == first) return "";
-     size_t last = str.find_last_not_of(" \t\r\n");
-     return str.substr(first, (last - first + 1));
-}
-
 std::string get_readable_size(const std::string& dev_name) {
      std::string parent_name = dev_name;
      while (!parent_name.empty() && std::isdigit(parent_name.back())) {
@@ -76,8 +69,8 @@ std::string get_device_model(const std::string& dev_name) {
      std::ifstream model_file(base_path + "model");
      std::getline(model_file, model);
 
-     vendor = trim(vendor);
-     model = trim(model);
+     boost::algorithm::trim(vendor);
+     boost::algorithm::trim(model);
 
      std::string info;
      if (!vendor.empty()) info += vendor + " ";
