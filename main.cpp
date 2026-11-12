@@ -141,8 +141,8 @@ std::string findLabelForDevice( const std::string& targetDev )
                const auto symStat = entry->symlink_status( ec );
                if( !ec && symStat.type() == boost::filesystem::symlink_file )
                {
-                    const auto devName = boost::filesystem::canonical( entry->path() ).filename();
-                    if( devName == targetDev )
+                    const auto devName = boost::filesystem::canonical( entry->path(), ec ).filename();
+                    if( !ec && devName == targetDev )
                     {
                          return decodeHexEscapes( entry->path().filename().string() );
                     }
